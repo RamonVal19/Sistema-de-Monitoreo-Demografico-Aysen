@@ -118,7 +118,7 @@ def transformar(df: pd.DataFrame, anio: int) -> pd.DataFrame:
 
     Decisiones de limpieza documentadas:
       - Edades reservadas (valor -66 del INE) → NULL (pd.NA)
-        Razón: -66 no es un dato demográfico real; NULL permite filtrarlos
+        Razón: -66 no es un dato demográfico real, NULL permite filtrarlos
         limpiamente en SQL sin afectar los cálculos de indicadores.
       - Comunas no mapeadas → se descartan (no pertenecen a Aysén).
       - Sexo no mapeado    → se descarta (valor fuera del dominio 1/2).
