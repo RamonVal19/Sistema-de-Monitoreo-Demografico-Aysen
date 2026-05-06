@@ -18,6 +18,8 @@ Uso:
 
 import argparse
 import sys
+import zipfile
+import requests
 from pathlib import Path
 from typing import Optional
 
@@ -55,6 +57,83 @@ EDAD_RESERVADA = -66
 
 # Columnas mínimas que debe tener cualquier CSV de entrada
 COLS_REQUERIDAS = {"region", "comuna", "sexo", "edad", "edad_quinquenal"}
+
+FUENTES: dict[int, dict] = {
+    2024: {
+    "url": "https://storage.googleapis.com/bktdescargascenso2024/personas_censo2024.zip",
+    "zip": ROOT / "data" / "personas_censo2024.zip",
+    "csv": ROOT / "data" / "personas_censo2024.csv",
+    "nombre_csv_en_zip": "personas_censo2024.csv",
+},
+}
+
+# Descarga y extrae el CSV del INE si no existe en data/. Si el CSV ya está presente, omite la descarga. Solo implementado para 2024
+def descargar_censo(anio: int) -> None:
+    if anio not in FUENTES:
+        return 
+    
+    fuente = FUENTES[anio]
+    csv_path: Path = fuente["csv"]
+
+    if csv_path.exists():
+        print(f"    CSV ya existe: {csv_path.name} — omitiendo descarga.")
+        return
+    zip_path: Path = fuente["zip"]
+    url: str = fuente["url"]
+ 
+    # ── Descarga con barra de progreso ────────────────────────────────────────
+    print(f"    Descargando {url} ...")
+    try:
+        with requests.get(url, stream=True, timeout=300) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0))
+            descargado = 0
+            with open(zip_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):  # 1 MB
+                    f.write(chunk)
+                    descargado += len(chunk)
+                    if total:
+                        pct = descargado / total * 100
+                        print(f"      {pct:.1f}% ({descargado // 1024 // 1024} MB / "
+                              f"{total // 1024 // 1024} MB)", end="\r")
+        print(f"\n    Descarga completa: {zip_path.name}")
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Error al descargar CENSO {anio}: {exc}") from exc
+
+    # ── Extracción del ZIP ────────────────────────────────────────────────────
+    print(f"    Extrayendo {zip_path.name} ...")
+    nombre_csv = fuente["nombre_csv_en_zip"]
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            # Buscar el CSV dentro del ZIP (puede estar en subcarpeta)
+            nombres = zf.namelist()
+            match = next((n for n in nombres if n.endswith(nombre_csv)), None)
+            if match is None:
+                raise RuntimeError(
+                    f"No se encontró '{nombre_csv}' dentro del ZIP. "
+                    f"Archivos disponibles: {nombres}"
+                )
+            # Extraer directamente a data/ con el nombre correcto
+            with zf.open(match) as origen, open(csv_path, "wb") as destino:
+                destino.write(origen.read())
+        print(f"    CSV extraído: {csv_path.name}")
+    except zipfile.BadZipFile as exc:
+        raise RuntimeError(f"ZIP corrupto o incompleto: {exc}") from exc
+    finally:
+        # Eliminar el ZIP para ahorrar espacio
+        if zip_path.exists():
+            zip_path.unlink()
+            print(f"    ZIP eliminado para ahorrar espacio.")   
+
+
+
+
+
+
+
+
+
+
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -232,6 +311,9 @@ def ejecutar_pipeline(anio: int, dry_run: bool = False) -> None:
     print(f"  CENSO {anio}")
     print(f"{'─'*50}")
 
+    # ── D — Descarga ──────────────────────────────────────────────────
+    print("\n  [D] Descarga")
+    descargar_censo(anio)
     # ── E ────────────────────────────────────────────────────────────────────
     print("\n  [E] Extracción")
     if not ruta_entrada.exists():
