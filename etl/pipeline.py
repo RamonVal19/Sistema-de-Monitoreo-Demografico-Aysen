@@ -20,6 +20,7 @@ import argparse
 import sys
 import zipfile
 import requests
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -64,24 +65,78 @@ FUENTES: dict[int, dict] = {
     "zip": ROOT / "data" / "personas_censo2024.zip",
     "csv": ROOT / "data" / "personas_censo2024.csv",
     "nombre_csv_en_zip": "personas_censo2024.csv",
-},
+        },
+    2017: {
+    "url": "https://www.ine.gob.cl/docs/default-source/censo-de-poblacion-y-vivienda/bbdd/censo-2017/csv/csv-personas-censo-2017.rar?sfvrsn=60c6e91c_2&download=true",
+    "rar_externo": ROOT / "data" / "personas_censo2017.rar",
+    "rar_interno": ROOT / "data" / "microdato_censo2017-personas.rar",
+    "csv": ROOT / "data" / "Microdato_Censo2017-Personas.csv",
+    "nombre_rar_en_rar": "microdato_censo2017-personas.rar",
+    "nombre_csv_en_rar": "Microdato_Censo2017-Personas.csv",
+    },
 }
 
-# Descarga y extrae el CSV del INE si no existe en data/. Si el CSV ya está presente, omite la descarga. Solo implementado para 2024
+
 def descargar_censo(anio: int) -> None:
+    """
+    Descarga y prepara el CSV del INE para el año indicado.
+    Lógica:
+      2024 — descarga ZIP desde Google Cloud Storage, extrae CSV.
+      2017 — opción C: usa RAR local si existe, si no descarga desde URL INE.
+              Luego extrae estructura RAR anidada → CSV.
+    Si el CSV ya existe en data/, omite todo el proceso.
+    """
     if anio not in FUENTES:
-        return 
-    
+        return
+
     fuente = FUENTES[anio]
     csv_path: Path = fuente["csv"]
 
     if csv_path.exists():
         print(f"    CSV ya existe: {csv_path.name} — omitiendo descarga.")
         return
+
+    # ── CENSO 2017 (RAR anidado) ──────────────────────────────────────────────
+    if anio == 2017:
+        rar_interno: Path = fuente["rar_interno"]
+        rar_externo: Path = fuente["rar_externo"]
+
+        if not rar_interno.exists() and not rar_externo.exists():
+            print(f"    No se encontró RAR local — descargando desde URL del INE ...")
+            url = fuente["url"]
+            try:
+                with requests.get(url, stream=True, timeout=600) as resp:
+                    resp.raise_for_status()
+                    total = int(resp.headers.get("content-length", 0))
+                    descargado = 0
+                    with open(rar_externo, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                            f.write(chunk)
+                            descargado += len(chunk)
+                            if total:
+                                # Calcula % de descarga
+                                pct = descargado / total * 100
+                                print(
+                                    f"      {pct:.1f}% "
+                                    f"({descargado // 1024 // 1024} MB / "
+                                    f"{total // 1024 // 1024} MB)",
+                                    end="\r"
+                                )
+                print(f"\n    Descarga completa: {rar_externo.name}")
+            except requests.RequestException as exc:
+                raise RuntimeError(f"Error al descargar CENSO 2017: {exc}") from exc
+        # Si el RAR ya está instalado localmente, no lo vuelve a descargar
+        else:
+            origen = rar_interno.name if rar_interno.exists() else rar_externo.name
+            print(f"    RAR local encontrado: {origen} — omitiendo descarga.")
+
+        _extraer_rar_anidado(fuente)
+        return
+
+    # ── CENSO 2024 (ZIP) ──────────────────────────────────────────────────────
     zip_path: Path = fuente["zip"]
     url: str = fuente["url"]
- 
-    # ── Descarga con barra de progreso ────────────────────────────────────────
+
     print(f"    Descargando {url} ...")
     try:
         with requests.get(url, stream=True, timeout=300) as resp:
@@ -89,44 +144,94 @@ def descargar_censo(anio: int) -> None:
             total = int(resp.headers.get("content-length", 0))
             descargado = 0
             with open(zip_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 1024):  # 1 MB
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
                     f.write(chunk)
                     descargado += len(chunk)
                     if total:
                         pct = descargado / total * 100
-                        print(f"      {pct:.1f}% ({descargado // 1024 // 1024} MB / "
-                              f"{total // 1024 // 1024} MB)", end="\r")
+                        print(
+                            f"      {pct:.1f}% "
+                            f"({descargado // 1024 // 1024} MB / "
+                            f"{total // 1024 // 1024} MB)",
+                            end="\r"
+                        )
         print(f"\n    Descarga completa: {zip_path.name}")
     except requests.RequestException as exc:
         raise RuntimeError(f"Error al descargar CENSO {anio}: {exc}") from exc
 
-    # ── Extracción del ZIP ────────────────────────────────────────────────────
     print(f"    Extrayendo {zip_path.name} ...")
     nombre_csv = fuente["nombre_csv_en_zip"]
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
-            # Buscar el CSV dentro del ZIP (puede estar en subcarpeta)
             nombres = zf.namelist()
             match = next((n for n in nombres if n.endswith(nombre_csv)), None)
             if match is None:
                 raise RuntimeError(
-                    f"No se encontró '{nombre_csv}' dentro del ZIP. "
+                    f"No se encontró '{nombre_csv}' en el ZIP. "
                     f"Archivos disponibles: {nombres}"
                 )
-            # Extraer directamente a data/ con el nombre correcto
             with zf.open(match) as origen, open(csv_path, "wb") as destino:
                 destino.write(origen.read())
         print(f"    CSV extraído: {csv_path.name}")
     except zipfile.BadZipFile as exc:
         raise RuntimeError(f"ZIP corrupto o incompleto: {exc}") from exc
     finally:
-        # Eliminar el ZIP para ahorrar espacio
         if zip_path.exists():
             zip_path.unlink()
-            print(f"    ZIP eliminado para ahorrar espacio.")   
+            print(f"    ZIP eliminado para ahorrar espacio.")
 
+def _extraer_rar_anidado(fuente: dict) -> None:
+    """
+    Extrae CSV desde RAR anidado:
+    personas_censo2017.rar → microdato_censo2017-personas.rar → CSV
+    """
+    rar_externo: Path = fuente["rar_externo"]
+    rar_interno: Path = fuente["rar_interno"]
+    csv_path: Path    = fuente["csv"]
 
+    # Paso 1: extraer RAR interno desde RAR externo (si no existe ya)
+    if not rar_interno.exists():
+        if not rar_externo.exists():
+            raise RuntimeError(
+                f"No se encontró el RAR: {rar_externo.name}\n"
+                f"Descárgalo desde:\n"
+                f"  {fuente['url']}\n"
+                f"y colócalo en data/ como '{rar_externo.name}'"
+            )
+        print(f"    Extrayendo {fuente['nombre_rar_en_rar']} del RAR externo ...")
+        resultado = subprocess.run(
+            ["unrar", "e", str(rar_externo),
+             fuente["nombre_rar_en_rar"], str(ROOT / "data") + "/"],
+            capture_output=True, text=True
+        )
+        if resultado.returncode != 0:
+            raise RuntimeError(f"Error al extraer RAR interno: {resultado.stderr}")
+        print(f"    RAR interno extraído: {fuente['nombre_rar_en_rar']}")
+    else:
+        print(f"    RAR interno ya existe: {rar_interno.name}")
+    # Paso 2: extraer CSV desde RAR interno
+    print(f"    Extrayendo {fuente['nombre_csv_en_rar']} del RAR interno ...")
+    resultado = subprocess.run(
+        ["unrar", "e", str(rar_interno),
+         fuente["nombre_csv_en_rar"], str(ROOT / "data") + "/"],
+        capture_output=True, text=True
+    )
+    if resultado.returncode != 0:
+        raise RuntimeError(f"Error al extraer CSV: {resultado.stderr}")
+    print(f"    CSV extraído: {csv_path.name}")
 
+    # Limpiar RARs para ahorrar espacio
+    for rar in [rar_externo, rar_interno]:
+        if rar.exists():
+            rar.unlink()
+    print(f"    RARs eliminados para ahorrar espacio.")
+
+    # Limpiar archivos de etiquetas y documentación extraídos junto al CSV
+    data_dir = ROOT / "data"
+    for archivo in data_dir.iterdir():
+        if archivo.name.startswith("etiquetas_") or archivo.suffix == ".pdf":
+            archivo.unlink()
+            print(f"    Eliminado: {archivo.name}")
 
 
 
@@ -139,15 +244,41 @@ def descargar_censo(anio: int) -> None:
 # ═════════════════════════════════════════════════════════════════════════════
 # E — EXTRACCIÓN
 # ═════════════════════════════════════════════════════════════════════════════
-
 def extraer_2017(ruta: Path) -> pd.DataFrame:
     """
-    Carga el CSV 2017 (ya filtrado por Aysén, separador coma).
-    Devuelve un DataFrame crudo sin transformar.
+    Carga el CSV 2017 nacional (separador punto y coma) en chunks.
+    Solo lee las columnas necesarias y filtra por región 11.
+    Columnas originales: REGION, COMUNA, P08 (sexo), P09 (edad)
     """
-    print(f"    Leyendo {ruta.name} ...")
-    df = pd.read_csv(ruta, sep=",", low_memory=False)
-    print(f"    Registros cargados: {len(df):,}")
+    cols = ["REGION", "COMUNA", "P08", "P09"]
+    print(f"    Leyendo {ruta.name} en chunks ...")
+
+    bloques: list[pd.DataFrame] = []
+    lector = pd.read_csv(
+        ruta,
+        sep=";",
+        usecols=cols,
+        chunksize=100_000,
+        low_memory=False,
+    )
+    for i, chunk in enumerate(lector):
+        aysen = chunk[chunk["REGION"] == REGION_AYSEN]
+        if not aysen.empty:
+            bloques.append(aysen)
+        if i % 10 == 0:
+            print(f"      chunk {i} procesado ...")
+
+    df = pd.concat(bloques, ignore_index=True)
+
+    # Renombrar al formato estándar del pipeline
+    df = df.rename(columns={
+        "REGION": "region",
+        "COMUNA": "comuna",
+        "P08":    "sexo",
+        "P09":    "edad",
+    })
+
+    print(f"    Registros región 11 encontrados: {len(df):,}")
     return df
 
 
@@ -184,12 +315,13 @@ def extraer_2024(ruta: Path) -> pd.DataFrame:
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _validar_columnas(df: pd.DataFrame, nombre_archivo: str) -> None:
-    faltantes = COLS_REQUERIDAS - set(df.columns)
+    # edad_quinquenal es opcional — se calcula en transformar() si no existe
+    cols_requeridas = COLS_REQUERIDAS - {"edad_quinquenal"}
+    faltantes = cols_requeridas - set(df.columns)
     if faltantes:
         raise ValueError(
             f"'{nombre_archivo}' no tiene las columnas requeridas: {faltantes}"
         )
-
 
 def transformar(df: pd.DataFrame, anio: int) -> pd.DataFrame:
     """
@@ -213,19 +345,28 @@ def transformar(df: pd.DataFrame, anio: int) -> pd.DataFrame:
     # ── 2. Tipos base ─────────────────────────────────────────────────────────
     resultado["comuna"] = resultado["comuna"].astype(int)
     resultado["sexo"] = resultado["sexo"].astype(int)
-    resultado["edad_quinquenal"] = resultado["edad_quinquenal"].astype(int)
+    if "edad_quinquenal" in resultado.columns:
+        resultado["edad_quinquenal"] = resultado["edad_quinquenal"].astype(int)
 
-    # ── 3. Edad: reservada → NULL ─────────────────────────────────────────────
+    # ── 3. edad_quinquenal: calcular si no viene en el CSV (CENSO 2017) ──────────
+    if "edad_quinquenal" not in resultado.columns:
+        edad_num = pd.to_numeric(resultado["edad"], errors="coerce")
+        resultado["edad_quinquenal"] = (
+        (edad_num // 5 * 5).clip(upper=85)
+        .astype("Int64")  # nullable integer — acepta pd.NA
+    )
+
+    # ── 4. Edad: reservada → NULL ─────────────────────────────────────────────
     edad_numerica = pd.to_numeric(resultado["edad"], errors="coerce")
     resultado["edad"] = edad_numerica.where(edad_numerica != EDAD_RESERVADA, other=pd.NA)
     # Convertir a Int64 (nullable integer) para soportar pd.NA
     resultado["edad"] = resultado["edad"].astype("Int64")
 
-    # ── 4. Mapeo de etiquetas ─────────────────────────────────────────────────
+    # ── 5. Mapeo de etiquetas ─────────────────────────────────────────────────
     resultado["nombre_comuna"] = resultado["comuna"].map(COMUNAS_AYSEN)
     resultado["sexo_label"] = resultado["sexo"].map(SEXO_LABEL)
 
-    # ── 5. Control de calidad ─────────────────────────────────────────────────
+    # ── 6. Control de calidad ─────────────────────────────────────────────────
     n_antes = len(resultado)
     resultado.dropna(subset=["nombre_comuna", "sexo_label"], inplace=True)
     n_descartados = n_antes - len(resultado)
@@ -290,7 +431,7 @@ def _cargar_indicadores(df: pd.DataFrame, anio: int, db) -> int:
 # Configuración de archivos de entrada y salida por año
 ARCHIVOS: dict[int, dict] = {
     2017: {
-        "entrada": ROOT / "data" / "personas_censo2017.csv",
+        "entrada": ROOT / "data" / "Microdato_Censo2017-Personas.csv",
         "salida":  ROOT / "data" / "censo_2017_aysen_final.csv",
         "extractor": extraer_2017,
     },
