@@ -33,10 +33,7 @@ class Base(DeclarativeBase):
 
 # get_db es el proveedor de sesiones para FastAPI: Utiliza un generado que FastAPI llama antes de cada request, entrega la sesión al endpoint, y cuando el request termina garantiza que ninguna conexión quede abierta.
 def get_db():
-    """
-    Dependencia de FastAPI que provee una sesión de BD por request
-    y garantiza su cierre al terminar.
-    """
+    #Dependencia de FastAPI que provee una sesión de BD por request y garantiza su cierre al terminar.
     db = SessionLocal()
     try:
         yield db
