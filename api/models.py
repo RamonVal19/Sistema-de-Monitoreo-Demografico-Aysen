@@ -9,8 +9,9 @@ Tablas:
 
 from sqlalchemy import (
     Column, Integer, String, SmallInteger,
-    ForeignKey, UniqueConstraint, CheckConstraint
+    ForeignKey, UniqueConstraint, CheckConstraint, Boolean, DateTime
 )
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from api.database import Base
 
@@ -18,11 +19,11 @@ from api.database import Base
 class Comuna(Base):
     __tablename__ = "comunas"
 
-    # Código comunal INE como PK natural (ej. 11201 → Aysén)
     codigo_comuna = Column(Integer, primary_key=True, index=True)
     nombre_comuna = Column(String(100), nullable=False, unique=True)
     codigo_region = Column(SmallInteger, nullable=False, default=11)
 
+    # cascade="delete-orphan": elimina indicadores asociados si se borra la comuna
     indicadores = relationship(
         "IndicadorDemografico",
         back_populates="comuna",
@@ -61,14 +62,14 @@ class IndicadorDemografico(Base):
     sexo       = Column(SmallInteger, nullable=False)   # 1 = Hombre, 2 = Mujer
     sexo_label = Column(String(10),   nullable=False)   # 'Hombre' | 'Mujer'
 
-    # NULL = persona que reservó su edad (INE código -66)
+    # nullable=True: personas que reservaron su edad (INE código -66 → NULL en ETL)
     edad            = Column(Integer,   nullable=True)
     edad_quinquenal = Column(SmallInteger, nullable=False)
 
     __table_args__ = (
-    CheckConstraint("sexo IN (1, 2)",            name="ck_sexo_valido"),
-    CheckConstraint("anio_censo IN (2017, 2024)", name="ck_anio_valido"),
-)
+        CheckConstraint("sexo IN (1, 2)",            name="ck_sexo_valido"),
+        CheckConstraint("anio_censo IN (2017, 2024)", name="ck_anio_valido"),
+    )
 
     comuna = relationship("Comuna", back_populates="indicadores")
 
@@ -78,3 +79,26 @@ class IndicadorDemografico(Base):
             f"comuna={self.codigo_comuna} censo={self.anio_censo} "
             f"sexo={self.sexo_label} edad={self.edad}>"
         )
+
+
+class Usuario(Base):
+    """
+    Tabla de usuarios administradores del sistema.
+    Las contraseñas se almacenan como hash bcrypt irreversible.
+    """
+    __tablename__ = "usuarios"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    username       = Column(String(50), nullable=False, unique=True, index=True)
+    email          = Column(String(100), nullable=False, unique=True)
+    hashed_password = Column(String(255), nullable=False)
+    is_active      = Column(Boolean, nullable=False, default=True)
+    # server_default=func.now(): BD registra timestamp automáticamente en cada inserción
+    created_at     = Column(DateTime, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("char_length(username) >= 3", name="ck_username_min_length"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Usuario {self.username} active={self.is_active}>"

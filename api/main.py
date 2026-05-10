@@ -6,7 +6,7 @@ Sprint 7 / OE2: endpoints de datos activos.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routers import comunas, indicadores
+from api.routers import comunas, indicadores, admin
 
 app = FastAPI(
     title="Sistema de Monitoreo Demográfico Comunal de Aysén",
@@ -30,7 +30,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(comunas.router)
 app.include_router(indicadores.router)
-
+app.include_router(admin.router)
 
 # ── Endpoints de estado ───────────────────────────────────────────────────────
 
