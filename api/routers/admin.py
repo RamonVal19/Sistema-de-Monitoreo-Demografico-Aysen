@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm  # Form-data para login (username+password)
 from pydantic import BaseModel
+from pydantic import field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -56,9 +57,16 @@ class EstadoBDOut(BaseModel):
     por_anio: list[dict]
     por_comuna: list[dict]
 
-
+# Validar año
 class ETLRequest(BaseModel):
-    anio: Optional[int] = None  # None = procesa ambos años (2017 y 2024)
+    anio: Optional[int] = None
+
+    @field_validator("anio")
+    @classmethod
+    def validar_anio(cls, v):
+        if v is not None and v not in (2017, 2024):
+            raise ValueError("El año debe ser 2017, 2024 o null (ambos).")
+        return v
 
 
 class ETLStatusOut(BaseModel):
