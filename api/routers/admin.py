@@ -192,7 +192,7 @@ def ejecutar_etl(
         cmd += ["--anio", str(request.anio)]
 
     # En Railway los CSVs no están disponibles — omitir descarga
-    if os.getenv("RAILWAY_ENVIRONMENT"):
+    if os.getenv("SKIP_ETL_DOWNLOAD") == "true":
         cmd += ["--skip-download"]
 
     # Actualizar estado: marca como "en curso"
