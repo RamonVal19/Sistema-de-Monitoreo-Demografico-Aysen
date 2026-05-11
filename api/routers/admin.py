@@ -12,6 +12,7 @@ Endpoints:
 
 import subprocess  # Para ejecutar scripts Python en subprocesos separados
 import sys
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -189,6 +190,10 @@ def ejecutar_etl(
     cmd = [sys.executable, str(pipeline)]
     if request.anio:
         cmd += ["--anio", str(request.anio)]
+
+    # En Railway los CSVs no están disponibles — omitir descarga
+    if os.getenv("RAILWAY_ENVIRONMENT"):
+        cmd += ["--skip-download"]
 
     # Actualizar estado: marca como "en curso"
     _etl_estado["en_curso"]      = True

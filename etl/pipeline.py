@@ -443,7 +443,7 @@ ARCHIVOS: dict[int, dict] = {
 }
 
 
-def ejecutar_pipeline(anio: int, dry_run: bool = False) -> None:
+def ejecutar_pipeline(anio: int, dry_run: bool = False, skip_download: bool = False) -> None:
     cfg = ARCHIVOS[anio]
     ruta_entrada: Path = cfg["entrada"]
     ruta_salida: Path  = cfg["salida"]
@@ -506,6 +506,10 @@ def main() -> None:
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Ejecuta E+T pero omite la carga en PostgreSQL.",
+    )
+    parser.add_argument(
+        "--skip-download", action="store_true",
+        help="Omite la descarga de CSVs y usa los archivos existentes en data/.",
     )
     args = parser.parse_args()
 
