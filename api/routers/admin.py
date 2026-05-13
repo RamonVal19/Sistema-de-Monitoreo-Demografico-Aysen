@@ -253,3 +253,11 @@ def etl_status(_: Usuario = Depends(get_current_user)):
     ** desempaqueta _etl_estado (dict) en argumentos nombrados de ETLStatusOut.
     """
     return ETLStatusOut(**_etl_estado)
+
+@router.get("/debug-env", summary="Debug variables de entorno")
+def debug_env(_: Usuario = Depends(get_current_user)):
+    return {
+        "SKIP_ETL_DOWNLOAD": os.getenv("SKIP_ETL_DOWNLOAD"),
+        "RAILWAY_PROJECT_ID": os.getenv("RAILWAY_PROJECT_ID"),
+        "DATABASE_URL_set": bool(os.getenv("DATABASE_URL")),
+    }
