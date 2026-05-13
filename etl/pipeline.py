@@ -454,7 +454,10 @@ def ejecutar_pipeline(anio: int, dry_run: bool = False, skip_download: bool = Fa
 
     # ── D — Descarga ──────────────────────────────────────────────────
     print("\n  [D] Descarga")
-    descargar_censo(anio)
+    if skip_download:
+        print("    --skip-download activo — omitiendo descarga.")
+    else:
+        descargar_censo(anio)
     # ── E ────────────────────────────────────────────────────────────────────
     print("\n  [E] Extracción")
     if not ruta_entrada.exists():
@@ -525,7 +528,7 @@ def main() -> None:
         print("\n  Tablas verificadas/creadas en PostgreSQL.")
 
     for anio in anios:
-        ejecutar_pipeline(anio, dry_run=args.dry_run)
+        ejecutar_pipeline(anio, dry_run=args.dry_run, skip_download=args.skip_download)
 
     print(f"\n{'═'*50}")
     print("  Pipeline completado.")
