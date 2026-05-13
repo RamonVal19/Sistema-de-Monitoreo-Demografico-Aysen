@@ -187,13 +187,23 @@ def ejecutar_etl(
     # Path(__file__) = /ruta/a/api/routers/admin.py
     # .resolve().parent.parent.parent = /ruta/a/ (sube 3 niveles)
     pipeline = Path(__file__).resolve().parent.parent.parent / "etl" / "pipeline.py"
+
+    # En Railway el pipeline no puede ejecutarse porque el filesystem de railway es efímero
+    if os.getenv("SKIP_ETL_DOWNLOAD") == "true":
+        return {
+            "resultado": "no_disponible",
+            "mensaje": (
+                "El pipeline ETL no puede ejecutarse en el entorno de producción "
+                "porque requiere descargar archivos CSV de varios GB. "
+                "Ejecuta el pipeline localmente apuntando a la BD de Railway: "
+                "export DATABASE_URL=<railway_url> && "
+                "PYTHONPATH=. python etl/pipeline.py --anio 2024"
+            ),
+        }
+
     cmd = [sys.executable, str(pipeline)]
     if request.anio:
         cmd += ["--anio", str(request.anio)]
-
-    # En Railway los CSVs no están disponibles — omitir descarga
-    if os.getenv("SKIP_ETL_DOWNLOAD") == "true":
-        cmd += ["--skip-download"]
 
     # Actualizar estado: marca como "en curso"
     _etl_estado["en_curso"]      = True
@@ -253,11 +263,3 @@ def etl_status(_: Usuario = Depends(get_current_user)):
     ** desempaqueta _etl_estado (dict) en argumentos nombrados de ETLStatusOut.
     """
     return ETLStatusOut(**_etl_estado)
-
-@router.get("/debug-env", summary="Debug variables de entorno")
-def debug_env(_: Usuario = Depends(get_current_user)):
-    return {
-        "SKIP_ETL_DOWNLOAD": os.getenv("SKIP_ETL_DOWNLOAD"),
-        "RAILWAY_PROJECT_ID": os.getenv("RAILWAY_PROJECT_ID"),
-        "DATABASE_URL_set": bool(os.getenv("DATABASE_URL")),
-    }
