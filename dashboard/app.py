@@ -264,20 +264,73 @@ def build_layout() -> html.Div:
                         ],
                     ),
 
-                    # Comparador — placeholder S12
+                    # Comparador intercomunal
                     card(
                         border_color=C["accent"],
                         children=[
                             html.H3("Comparador intercomunal",
-                                    style={"margin": "0 0 0.5rem 0",
-                                           "color": C["primary"], "fontSize": "1rem"}),
-                            html.Div(
-                                style={"height": "150px", "display": "flex",
-                                       "alignItems": "center", "justifyContent": "center",
-                                       "backgroundColor": C["background"], "borderRadius": "6px",
-                                       "color": C["text_light"], "fontSize": "0.9rem"},
-                                children="🗺️  Comparador intercomunal — disponible en Semana 12",
+                                    style={"margin": "0 0 0.3rem 0",
+                                        "color": C["primary"], "fontSize": "1rem"}),
+                            html.P(
+                                "Selecciona dos comunas para comparar sus indicadores demográficos.",
+                                style={"margin": "0 0 1rem 0", "fontSize": "0.78rem",
+                                    "color": C["text_light"]},
                             ),
+                            # Selectores del comparador
+                            html.Div(
+                                style={"display": "flex", "gap": "1.5rem",
+                                    "marginBottom": "1.2rem", "flexWrap": "wrap",
+                                    "alignItems": "flex-end"},
+                                children=[
+                                    html.Div([
+                                        html.Label("Comuna A", style={
+                                            "fontWeight": "600", "color": C["primary"],
+                                            "display": "block", "marginBottom": "0.3rem",
+                                            "fontSize": "0.85rem",
+                                        }),
+                                        dcc.Dropdown(
+                                            id="comparador-comuna-a",
+                                            options=[],
+                                            value=None,
+                                            clearable=False,
+                                            style={"width": "200px"},
+                                        ),
+                                    ]),
+                                    html.Div([
+                                        html.Label("Comuna B", style={
+                                            "fontWeight": "600", "color": C["secondary"],
+                                            "display": "block", "marginBottom": "0.3rem",
+                                            "fontSize": "0.85rem",
+                                        }),
+                                        dcc.Dropdown(
+                                            id="comparador-comuna-b",
+                                            options=[],
+                                            value=None,
+                                            clearable=False,
+                                            style={"width": "200px"},
+                                        ),
+                                    ]),
+                                    html.Div([
+                                        html.Label("Año de censo", style={
+                                            "fontWeight": "600", "color": C["text"],
+                                            "display": "block", "marginBottom": "0.3rem",
+                                            "fontSize": "0.85rem",
+                                        }),
+                                        dcc.Dropdown(
+                                            id="comparador-anio",
+                                            options=[
+                                                {"label": "2024", "value": 2024},
+                                                {"label": "2017", "value": 2017},
+                                            ],
+                                            value=2024,
+                                            clearable=False,
+                                            style={"width": "110px"},
+                                        ),
+                                    ]),
+                                ],
+                            ),
+                            # Resultado del comparador
+                            html.Div(id="comparador-resultado"),
                         ],
                     ),
                 ],
@@ -362,6 +415,120 @@ def actualizar_piramide(codigo_comuna: int, anio: int):
 
     return construir_piramide(data)
 
+@callback(
+    Output("comparador-comuna-a", "options"),
+    Output("comparador-comuna-a", "value"),
+    Output("comparador-comuna-b", "options"),
+    Output("comparador-comuna-b", "value"),
+    Input("comparador-comuna-a", "id"),  # trigger único al cargar
+)
+def inicializar_comparador(_):
+    """Carga las opciones de comunas en los selectores del comparador."""
+    comunas = get_comunas()
+    opciones = [{"label": c["nombre_comuna"], "value": c["codigo_comuna"]}
+                for c in comunas]
+    valor_a = opciones[0]["value"] if len(opciones) > 0 else None
+    valor_b = opciones[1]["value"] if len(opciones) > 1 else None
+    return opciones, valor_a, opciones, valor_b
+
+
+@callback(
+    Output("comparador-resultado", "children"),
+    Input("comparador-comuna-a", "value"),
+    Input("comparador-comuna-b", "value"),
+    Input("comparador-anio", "value"),
+)
+def actualizar_comparador(comuna_a: int, comuna_b: int, anio: int):
+    """Compara indicadores demográficos entre dos comunas."""
+    if not comuna_a or not comuna_b or not anio:
+        return html.P("Selecciona dos comunas para comparar.",
+                      style={"color": C["text_light"]})
+
+    data_a = get_envejecimiento(comuna_a, anio)
+    data_b = get_envejecimiento(comuna_b, anio)
+
+    if data_a is None or data_b is None:
+        return html.P("Error al obtener datos.", style={"color": "red"})
+
+    def fila_comparacion(label: str, val_a, val_b, tooltip: str = "") -> html.Tr:
+        """Fila de la tabla con resaltado del valor mayor."""
+        es_ie = "envejecimiento" in label.lower()
+        # Para IE y pob_65+: mayor = más envejecida (naranja)
+        # Para pob_0-14: mayor = más joven (verde)
+        if isinstance(val_a, float) and isinstance(val_b, float):
+            color_a = C["orange"] if (es_ie and val_a > val_b) else (
+                C["accent"] if (not es_ie and val_a > val_b) else C["text"])
+            color_b = C["orange"] if (es_ie and val_b > val_a) else (
+                C["accent"] if (not es_ie and val_b > val_a) else C["text"])
+            str_a = f"{val_a:.2f}"
+            str_b = f"{val_b:.2f}"
+        else:
+            color_a = C["primary"] if val_a > val_b else C["text"]
+            color_b = C["primary"] if val_b > val_a else C["text"]
+            str_a = f"{val_a:,}"
+            str_b = f"{val_b:,}"
+
+        return html.Tr([
+            html.Td(label, title=tooltip,
+                    style={"padding": "0.6rem 1rem", "color": C["text_light"],
+                           "fontSize": "0.82rem", "fontWeight": "600",
+                           "textTransform": "uppercase", "letterSpacing": "0.03em"}),
+            html.Td(str_a, style={"padding": "0.6rem 1rem", "textAlign": "center",
+                                   "fontWeight": "bold", "fontSize": "1.1rem",
+                                   "color": color_a}),
+            html.Td(str_b, style={"padding": "0.6rem 1rem", "textAlign": "center",
+                                   "fontWeight": "bold", "fontSize": "1.1rem",
+                                   "color": color_b}),
+        ])
+
+    ie_a = data_a["indice_envejecimiento"] or 0.0
+    ie_b = data_b["indice_envejecimiento"] or 0.0
+
+    return html.Table(
+        style={"width": "100%", "borderCollapse": "collapse"},
+        children=[
+            # Encabezado
+            html.Thead(html.Tr([
+                html.Th("Indicador", style={"padding": "0.6rem 1rem",
+                                             "borderBottom": f"2px solid {C['border']}",
+                                             "textAlign": "left", "color": C["text_light"],
+                                             "fontSize": "0.78rem"}),
+                html.Th(
+                    html.Div([
+                        html.Span(data_a["nombre_comuna"],
+                                  style={"fontWeight": "bold", "color": C["primary"],
+                                         "fontSize": "1rem"}),
+                        html.Br(),
+                        badge_ie(ie_a),
+                    ]),
+                    style={"padding": "0.6rem 1rem", "textAlign": "center",
+                           "borderBottom": f"2px solid {C['primary']}"}
+                ),
+                html.Th(
+                    html.Div([
+                        html.Span(data_b["nombre_comuna"],
+                                  style={"fontWeight": "bold", "color": C["secondary"],
+                                         "fontSize": "1rem"}),
+                        html.Br(),
+                        badge_ie(ie_b),
+                    ]),
+                    style={"padding": "0.6rem 1rem", "textAlign": "center",
+                           "borderBottom": f"2px solid {C['secondary']}"}
+                ),
+            ])),
+            # Filas
+            html.Tbody([
+                fila_comparacion("Año de censo", anio, anio),
+                fila_comparacion("Población 0–14", data_a["pob_0_14"], data_b["pob_0_14"]),
+                fila_comparacion("Población 65+", data_a["pob_65_mas"], data_b["pob_65_mas"]),
+                fila_comparacion(
+                    "Índice de envejecimiento",
+                    ie_a, ie_b,
+                    tooltip="(pob. 65+) / (pob. 0–14) × 100"
+                ),
+            ]),
+        ],
+    )
 
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
