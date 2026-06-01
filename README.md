@@ -25,10 +25,10 @@ La API está desplegada en Railway y accesible públicamente:
 
 | Recurso | URL |
 |---------|-----|
-| API raíz | https://web-production-51433.up.railway.app |
-| Documentación Swagger | https://web-production-51433.up.railway.app/docs |
-| Índice de envejecimiento 2024 | https://web-production-51433.up.railway.app/indicadores/envejecimiento?anio=2024 |
-| Índice de envejecimiento 2017 | https://web-production-51433.up.railway.app/indicadores/envejecimiento?anio=2017 |
+| API raíz | https://monitoreo-demografico-api.onrender.com |
+| Documentación Swagger | https://monitoreo-demografico-api.onrender.com/docs |
+| Índice de envejecimiento 2024 | https://monitoreo-demografico-api.onrender.com/indicadores/envejecimiento?anio=2024 |
+| Índice de envejecimiento 2017 | https://monitoreo-demografico-api.onrender.com/indicadores/envejecimiento?anio=2017 |
 
 ## Indicadores implementados
 
