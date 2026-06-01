@@ -132,8 +132,10 @@ def construir_piramide(data_sexo_edad: dict) -> go.Figure:
     mujeres = {item["edad_quinquenal"]: item["cantidad"]
                 for item in distribucion if item["sexo_label"] == "Mujer"}
 
-    cant_hombres = [hombres.get(g, 0) for g in GRUPOS_ETARIOS]
-    cant_mujeres = [mujeres.get(g, 0) for g in GRUPOS_ETARIOS]
+    grupos_activos = sorted(set(hombres.keys()) | set(mujeres.keys()))
+    labels_activos = [f"{g}–{g+4}" if g < 85 else "85+" for g in grupos_activos]
+    cant_hombres   = [hombres.get(g, 0) for g in grupos_activos]
+    cant_mujeres   = [mujeres.get(g, 0) for g in grupos_activos]
 
     max_val = max(max(cant_hombres), max(cant_mujeres), 1)
 
@@ -141,7 +143,7 @@ def construir_piramide(data_sexo_edad: dict) -> go.Figure:
 
     # Barras de hombres (valores negativos para que vayan a la izquierda)
     fig.add_trace(go.Bar(
-        y=LABELS_GRUPOS,
+        y=labels_activos,
         x=[-v for v in cant_hombres],
         name="Hombre",
         orientation="h",
@@ -152,7 +154,7 @@ def construir_piramide(data_sexo_edad: dict) -> go.Figure:
 
     # Barras de mujeres
     fig.add_trace(go.Bar(
-        y=LABELS_GRUPOS,
+        y=labels_activos,
         x=cant_mujeres,
         name="Mujer",
         orientation="h",
@@ -259,6 +261,27 @@ def build_layout() -> html.Div:
                                 "Los valores negativos corresponden a hombres (izquierda) y positivos a mujeres (derecha).",
                                 style={"margin": "0 0 1rem 0", "fontSize": "0.78rem",
                                        "color": C["text_light"]},
+                            ),
+                            html.Div(
+                                style={"marginBottom": "1rem"},
+                                children=[
+                                    html.Label(
+                                        "Filtrar por rango etario",
+                                        style={"fontWeight": "600", "color": C["text"],
+                                            "fontSize": "0.85rem", "display": "block",
+                                            "marginBottom": "0.5rem"},
+                                    ),
+                                    dcc.RangeSlider(
+                                        id="filtro-rango-etario",
+                                        min=0,
+                                        max=85,
+                                        step=5,
+                                        marks={i: f"{i}" if i % 20 == 0 or i == 85 else ""
+                                            for i in range(0, 90, 5)},
+                                        value=[0, 85],
+                                        tooltip={"placement": "bottom", "always_visible": False},
+                                    ),
+                                ],
                             ),
                             dcc.Graph(id="grafico-piramide", config={"displayModeBar": False}),
                         ],
@@ -401,8 +424,9 @@ def actualizar_resumen(codigo_comuna: int, anio: int):
     Output("grafico-piramide", "figure"),
     Input("selector-comuna", "value"),
     Input("selector-anio", "value"),
+    Input("filtro-rango-etario", "value"),
 )
-def actualizar_piramide(codigo_comuna: int, anio: int):
+def actualizar_piramide(codigo_comuna: int, anio: int, rango_etario: list):
     if not codigo_comuna or not anio:
         return go.Figure()
 
@@ -413,7 +437,17 @@ def actualizar_piramide(codigo_comuna: int, anio: int):
                            font=dict(size=14, color=C["text_light"]))
         return fig
 
-    return construir_piramide(data)
+    # Filtrar distribución por rango etario seleccionado
+    rango_min, rango_max = rango_etario
+    data_filtrada = {
+        **data,
+        "distribucion": [
+            item for item in data["distribucion"]
+            if rango_min <= item["edad_quinquenal"] <= rango_max
+        ]
+    }
+
+    return construir_piramide(data_filtrada)
 
 @callback(
     Output("comparador-comuna-a", "options"),
