@@ -14,12 +14,14 @@ import plotly.graph_objects as go
 # ── Configuración ─────────────────────────────────────────────────────────────
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
+dash_prefix = os.getenv("DASH_PREFIX", "/")
 app = dash.Dash(
     __name__,
     title="Monitoreo Demográfico Aysén",
     suppress_callback_exceptions=True,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
-    requests_pathname_prefix=os.getenv("DASH_PREFIX", "/"),
+    requests_pathname_prefix=dash_prefix,
+    routes_pathname_prefix=dash_prefix,
 )
 
 # ── Colores institucionales ───────────────────────────────────────────────────
