@@ -56,16 +56,10 @@ def health_check():
 # ── Integración Dashboard Dash ────────────────────────────────────────────────
 import sys
 import os
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from a2wsgi import ASGIMiddleware
+from starlette.middleware.wsgi import WSGIMiddleware
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dashboard.app import app as dash_app
 
-
-def create_app():
-    """Retorna la aplicación combinada FastAPI + Dash para Gunicorn."""
-    return DispatcherMiddleware(
-        ASGIMiddleware(app),  # convierte FastAPI (ASGI) a WSGI
-        {"/dashboard": dash_app.server}
-    )
+# Montar Dash en /dashboard usando WSGIMiddleware de Starlette
+app.mount("/dashboard", WSGIMiddleware(dash_app.server))
