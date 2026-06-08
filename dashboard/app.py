@@ -19,6 +19,7 @@ app = dash.Dash(
     title="Monitoreo Demográfico Aysén",
     suppress_callback_exceptions=True,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+    requests_pathname_prefix=os.getenv("DASH_PREFIX", "/"),
 )
 
 # ── Colores institucionales ───────────────────────────────────────────────────

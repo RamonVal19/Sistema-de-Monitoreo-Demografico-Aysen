@@ -5,6 +5,9 @@ Sprint 7 / OE2: endpoints de datos activos.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import sys
+import os
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 from api.routers import comunas, indicadores, admin
 
@@ -49,3 +52,14 @@ def root():
 def health_check():
     """Health check para Railway."""
     return {"status": "ok"}
+
+    # ── Integración Dashboard Dash ────────────────────────────────────────────────
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dashboard.app import app as dash_app
+
+
+
+def create_app():
+    """Retorna la aplicación combinada FastAPI + Dash para Gunicorn."""
+    return DispatcherMiddleware(app, {"/dashboard": dash_app.server})
