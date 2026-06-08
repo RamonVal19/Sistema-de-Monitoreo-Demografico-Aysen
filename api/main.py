@@ -53,13 +53,19 @@ def health_check():
     """Health check para Railway."""
     return {"status": "ok"}
 
-    # ── Integración Dashboard Dash ────────────────────────────────────────────────
+# ── Integración Dashboard Dash ────────────────────────────────────────────────
+import sys
+import os
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from a2wsgi import ASGIMiddleware
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from dashboard.app import app as dash_app
-
 
 
 def create_app():
     """Retorna la aplicación combinada FastAPI + Dash para Gunicorn."""
-    return DispatcherMiddleware(app, {"/dashboard": dash_app.server})
+    return DispatcherMiddleware(
+        ASGIMiddleware(app),  # convierte FastAPI (ASGI) a WSGI
+        {"/dashboard": dash_app.server}
+    )

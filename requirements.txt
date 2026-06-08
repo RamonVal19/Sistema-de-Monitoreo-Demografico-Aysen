@@ -27,3 +27,4 @@ passlib==1.7.4
 python-jose==3.5.0
 python-multipart>=0.0.9
 gunicorn>=21.2.0
+a2wsgi>=1.10.0
