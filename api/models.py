@@ -97,7 +97,7 @@ class Usuario(Base):
     created_at     = Column(DateTime, server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("char_length(username) >= 3", name="ck_username_min_length"),
+    CheckConstraint("length(username) >= 3", name="ck_username_min_length"),
     )
 
     def __repr__(self) -> str:

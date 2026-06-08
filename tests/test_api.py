@@ -21,9 +21,9 @@ from sqlalchemy.pool import StaticPool
 
 from api.main import app
 from api.database import Base, get_db
-from api.models import Comuna, IndicadorDemografico
 from etl.pipeline import transformar, EDAD_RESERVADA, COMUNAS_AYSEN
-
+from api.models import Comuna, IndicadorDemografico, Usuario
+from api.auth import hash_password
 # ═════════════════════════════════════════════════════════════════════════════
 # FIXTURES COMPARTIDOS
 # ═════════════════════════════════════════════════════════════════════════════
@@ -51,6 +51,16 @@ def setup_test_db():
         Comuna(codigo_comuna=11101, nombre_comuna="Coyhaique", codigo_region=11),
     ]
     db.add_all(comunas_seed)
+    db.commit()
+
+    # Usuario admin de prueba
+    usuario_seed = Usuario(
+        username="admin_test",
+        email="admin@test.com",
+        hashed_password=hash_password("test1234"),
+        is_active=True,
+    )
+    db.add(usuario_seed)
     db.commit()
 
     indicadores_seed = [
@@ -301,3 +311,81 @@ class TestIndiceEnvejecimiento:
         for campo in ["codigo_comuna", "nombre_comuna", "anio_censo",
                       "pob_65_mas", "pob_0_14", "indice_envejecimiento"]:
             assert campo in data
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TESTS DE /admin
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestAdmin:
+    def test_login_exitoso(self):
+        resp = client.post(
+            "/admin/login",
+            data={"username": "admin_test", "password": "test1234"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+        assert data["username"] == "admin_test"
+
+    def test_login_credenciales_incorrectas(self):
+        resp = client.post(
+            "/admin/login",
+            data={"username": "admin_test", "password": "wrongpassword"},
+        )
+        assert resp.status_code == 401
+
+    def test_login_usuario_inexistente(self):
+        resp = client.post(
+            "/admin/login",
+            data={"username": "noexiste", "password": "test1234"},
+        )
+        assert resp.status_code == 401
+
+    def test_estado_bd_sin_token_retorna_401(self):
+        resp = client.get("/admin/estado-bd")
+        assert resp.status_code == 401
+
+    def test_estado_bd_con_token_valido(self):
+        # Obtener token
+        token = client.post(
+            "/admin/login",
+            data={"username": "admin_test", "password": "test1234"},
+        ).json()["access_token"]
+
+        resp = client.get(
+            "/admin/estado-bd",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "total_registros" in data
+        assert "por_anio" in data
+        assert "por_comuna" in data
+
+    def test_estado_bd_token_invalido_retorna_401(self):
+        resp = client.get(
+            "/admin/estado-bd",
+            headers={"Authorization": "Bearer token_invalido"},
+        )
+        assert resp.status_code == 401
+
+    def test_etl_status_sin_token_retorna_401(self):
+        resp = client.get("/admin/etl-status")
+        assert resp.status_code == 401
+
+    def test_etl_status_con_token_valido(self):
+        token = client.post(
+            "/admin/login",
+            data={"username": "admin_test", "password": "test1234"},
+        ).json()["access_token"]
+
+        resp = client.get(
+            "/admin/etl-status",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "en_curso" in data
+        assert "ultimo_resultado" in data
