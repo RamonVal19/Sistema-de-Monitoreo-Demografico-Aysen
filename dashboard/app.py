@@ -569,4 +569,5 @@ def actualizar_comparador(comuna_a: int, comuna_b: int, anio: int):
 
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, port=8050)
+    port = int(os.getenv("PORT", 8050))
+    app.run(host="0.0.0.0", debug=False, port=port)
