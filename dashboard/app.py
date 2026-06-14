@@ -8,7 +8,7 @@ Semana 10: pirámide poblacional por sexo y grupo etario quinquenal.
 import os
 import requests
 import dash
-from dash import dcc, html, Input, Output, callback
+from dash import dcc, html, Input, Output, State, callback, ctx
 import plotly.graph_objects as go
 
 # ── Configuración ─────────────────────────────────────────────────────────────
@@ -287,6 +287,32 @@ def build_layout() -> html.Div:
                                 ],
                             ),
                             dcc.Graph(id="grafico-piramide", config={"displayModeBar": False}),
+                            html.Div(
+                                style={"display": "flex", "gap": "0.8rem", "marginTop": "1rem"},
+                                children=[
+                                    html.Button(
+                                        "Descargar PNG",
+                                        id="btn-descargar-png",
+                                        style={
+                                            "backgroundColor": C["primary"], "color": "white",
+                                            "border": "none", "borderRadius": "6px",
+                                            "padding": "0.5rem 1.2rem", "fontSize": "0.85rem",
+                                            "cursor": "pointer", "fontWeight": "600",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Descargar PDF",
+                                        id="btn-descargar-pdf",
+                                        style={
+                                            "backgroundColor": C["secondary"], "color": "white",
+                                            "border": "none", "borderRadius": "6px",
+                                            "padding": "0.5rem 1.2rem", "fontSize": "0.85rem",
+                                            "cursor": "pointer", "fontWeight": "600",
+                                        },
+                                    ),
+                                ],
+                            ),
+                            dcc.Download(id="descarga-piramide"),
                         ],
                     ),
 
@@ -566,6 +592,46 @@ def actualizar_comparador(comuna_a: int, comuna_b: int, anio: int):
             ]),
         ],
     )
+
+@callback(
+    Output("descarga-piramide", "data"),
+    Input("btn-descargar-png", "n_clicks"),
+    Input("btn-descargar-pdf", "n_clicks"),
+    State("selector-comuna", "value"),
+    State("selector-anio", "value"),
+    State("filtro-rango-etario", "value"),
+    prevent_initial_call=True,
+)
+def descargar_piramide(n_png, n_pdf, codigo_comuna, anio, rango_etario):
+    """Genera y descarga la pirámide poblacional en PNG o PDF."""
+    triggered = ctx.triggered_id
+
+    data = get_sexo_edad(codigo_comuna, anio)
+    if data is None:
+        return None
+
+    rango_min, rango_max = rango_etario
+    data_filtrada = {
+        **data,
+        "distribucion": [
+            item for item in data["distribucion"]
+            if rango_min <= item["edad_quinquenal"] <= rango_max
+        ]
+    }
+    fig = construir_piramide(data_filtrada)
+
+    nombre_comuna = data["nombre_comuna"].replace(" ", "_")
+    nombre_base = f"piramide_{nombre_comuna}_{anio}"
+
+    if triggered == "btn-descargar-png":
+        img_bytes = fig.to_image(format="png", width=900, height=600, scale=2)
+        return dcc.send_bytes(img_bytes, f"{nombre_base}.png")
+
+    elif triggered == "btn-descargar-pdf":
+        pdf_bytes = fig.to_image(format="pdf", width=900, height=600)
+        return dcc.send_bytes(pdf_bytes, f"{nombre_base}.pdf")
+
+    return None
 
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
