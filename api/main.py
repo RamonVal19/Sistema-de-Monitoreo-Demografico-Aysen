@@ -56,10 +56,13 @@ def health_check():
 # ── Integración Dashboard Dash ────────────────────────────────────────────────
 import sys
 import os
-from starlette.middleware.wsgi import WSGIMiddleware
 
+# Establecer DASH_PREFIX antes de importar dashboard
+if not os.getenv("DASH_PREFIX"):
+    os.environ["DASH_PREFIX"] = "/dashboard/"
+
+from a2wsgi import WSGIMiddleware
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dashboard.app import app as dash_app
 
-# Montar Dash en /dashboard usando WSGIMiddleware de Starlette
 app.mount("/dashboard", WSGIMiddleware(dash_app.server))
