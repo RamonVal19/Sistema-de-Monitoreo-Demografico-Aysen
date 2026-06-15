@@ -483,16 +483,29 @@ def actualizar_piramide(codigo_comuna: int, anio: int, rango_etario: list):
     Output("comparador-comuna-a", "value"),
     Output("comparador-comuna-b", "options"),
     Output("comparador-comuna-b", "value"),
-    Input("comparador-comuna-a", "id"),  # trigger único al cargar
+    Input("comparador-comuna-a", "value"),
+    Input("comparador-comuna-b", "value"),
 )
-def inicializar_comparador(_):
-    """Carga las opciones de comunas en los selectores del comparador."""
+def actualizar_opciones_comparador(comuna_a, comuna_b):
+    """
+    Filtra las opciones de cada dropdown para excluir la comuna
+    seleccionada en el otro, evitando comparar una comuna consigo misma.
+    """
     comunas = get_comunas()
-    opciones = [{"label": c["nombre_comuna"], "value": c["codigo_comuna"]}
-                for c in comunas]
-    valor_a = opciones[0]["value"] if len(opciones) > 0 else None
-    valor_b = opciones[1]["value"] if len(opciones) > 1 else None
-    return opciones, valor_a, opciones, valor_b
+    todas = [{"label": c["nombre_comuna"], "value": c["codigo_comuna"]} for c in comunas]
+
+    # Inicialización (primera carga, ambos valores son None)
+    if comuna_a is None and comuna_b is None:
+        valor_a = todas[0]["value"] if len(todas) > 0 else None
+        valor_b = todas[1]["value"] if len(todas) > 1 else None
+        comuna_a, comuna_b = valor_a, valor_b
+    else:
+        valor_a, valor_b = comuna_a, comuna_b
+
+    opciones_a = [o for o in todas if o["value"] != comuna_b]
+    opciones_b = [o for o in todas if o["value"] != comuna_a]
+
+    return opciones_a, valor_a, opciones_b, valor_b
 
 
 @callback(
@@ -513,11 +526,18 @@ def actualizar_comparador(comuna_a: int, comuna_b: int, anio: int):
     if data_a is None or data_b is None:
         return html.P("Error al obtener datos.", style={"color": "red"})
 
+    # Población total: suma de todos los grupos etarios (sexo-edad)
+    sexo_edad_a = get_sexo_edad(comuna_a, anio)
+    sexo_edad_b = get_sexo_edad(comuna_b, anio)
+
+    pob_total_a = sum(item["cantidad"] for item in sexo_edad_a["distribucion"]) if sexo_edad_a else None
+    pob_total_b = sum(item["cantidad"] for item in sexo_edad_b["distribucion"]) if sexo_edad_b else None
+
     def fila_comparacion(label: str, val_a, val_b, tooltip: str = "") -> html.Tr:
         """Fila de la tabla con resaltado del valor mayor."""
         es_ie = "envejecimiento" in label.lower()
         # Para IE y pob_65+: mayor = más envejecida (naranja)
-        # Para pob_0-14: mayor = más joven (verde)
+        # Para pob_0-14 y pob_total: mayor = más joven/más poblada (verde)
         if isinstance(val_a, float) and isinstance(val_b, float):
             color_a = C["orange"] if (es_ie and val_a > val_b) else (
                 C["accent"] if (not es_ie and val_a > val_b) else C["text"])
@@ -546,6 +566,27 @@ def actualizar_comparador(comuna_a: int, comuna_b: int, anio: int):
 
     ie_a = data_a["indice_envejecimiento"] or 0.0
     ie_b = data_b["indice_envejecimiento"] or 0.0
+
+    filas = [
+        fila_comparacion("Año de censo", anio, anio),
+    ]
+
+    # Población total — solo se agrega si ambos endpoints respondieron
+    if pob_total_a is not None and pob_total_b is not None:
+        filas.append(
+            fila_comparacion("Población total", pob_total_a, pob_total_b,
+                            tooltip="Suma de todos los grupos etarios (sexo-edad)")
+        )
+
+    filas += [
+        fila_comparacion("Población 0–14", data_a["pob_0_14"], data_b["pob_0_14"]),
+        fila_comparacion("Población 65+", data_a["pob_65_mas"], data_b["pob_65_mas"]),
+        fila_comparacion(
+            "Índice de envejecimiento",
+            ie_a, ie_b,
+            tooltip="(pob. 65+) / (pob. 0–14) × 100"
+        ),
+    ]
 
     return html.Table(
         style={"width": "100%", "borderCollapse": "collapse"},
@@ -580,16 +621,7 @@ def actualizar_comparador(comuna_a: int, comuna_b: int, anio: int):
                 ),
             ])),
             # Filas
-            html.Tbody([
-                fila_comparacion("Año de censo", anio, anio),
-                fila_comparacion("Población 0–14", data_a["pob_0_14"], data_b["pob_0_14"]),
-                fila_comparacion("Población 65+", data_a["pob_65_mas"], data_b["pob_65_mas"]),
-                fila_comparacion(
-                    "Índice de envejecimiento",
-                    ie_a, ie_b,
-                    tooltip="(pob. 65+) / (pob. 0–14) × 100"
-                ),
-            ]),
+            html.Tbody(filas),
         ],
     )
 
